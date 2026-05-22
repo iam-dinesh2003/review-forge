@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after {
+    border-color: rgba(255, 255, 255, 0.06);
+    box-sizing: border-box;
+  }
+
+  html {
+    background-color: #0a0a0a;
+    color: #f4f4f5;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    margin: 0;
+    background-color: #0a0a0a;
+    min-height: 100vh;
+  }
+
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 2px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+}
+
+@layer components {
+  .page-container {
+    @apply p-6 min-h-screen;
+  }
+
+  .card {
+    @apply bg-surface border border-white/[0.06] rounded;
+  }
+
+  .card-raised {
+    @apply bg-surface-raised border border-white/[0.06] rounded;
+  }
+
+  /* label-xs: section headers — bumped from text-2xs to text-xs */
+  .label-xs {
+    @apply text-xs uppercase tracking-widest text-zinc-500 font-medium;
+  }
+
+  .table-row {
+    @apply border-b border-white/[0.04] transition-colors cursor-pointer;
+  }
+
+  .table-row:hover {
+    @apply bg-white/[0.02];
+  }
+
+  .table-row:last-child {
+    @apply border-b-0;
+  }
+}
+
+/* ── Print / PDF export ───────────────────────────────────────────────────── */
+@media print {
+  /* Hide navigation, sidebar controls, and interactive elements */
+  nav, aside, .print\:hidden,
+  button:not(.print-show),
+  [data-sidebar] { display: none !important; }
+
+  html, body {
+    background: #fff !important;
+    color: #111 !important;
+    font-size: 12px;
+  }
+
+  .page-container {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Cards become clean white boxes */
+  .card {
+    background: #fff !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 6px !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Force text to dark for readability */
+  .text-zinc-200, .text-zinc-300, .text-zinc-400, .text-zinc-100 { color: #1f2937 !important; }
+  .text-zinc-500, .text-zinc-600, .text-zinc-700 { color: #6b7280 !important; }
+
+  /* Animated bars: show as static */
+  motion\:div { animation: none !important; transition: none !important; }
+
+  /* Sidebar goes below main content on print */
+  .flex.gap-5.items-start { flex-direction: column !important; }
+  .w-64.shrink-0 { width: 100% !important; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+
+  /* Page breaks */
+  .space-y-4 > * { page-break-inside: avoid; }
+  h1 { font-size: 18px !important; }
+}
+
+/* ── Mobile responsive ────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .page-container {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+}
