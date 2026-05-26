@@ -3,7 +3,7 @@
 AI-powered GitHub PR reviewer and developer evaluation platform. Built with Java Spring Boot + Gemini 2.5 Flash.
 
 > **Live demo concept:** Open a PR → watch AI comments appear inline within 30 seconds. Paste any GitHub username → get a full code quality assessment with AI-detection scoring.
-
+## Status: Live on localhost with Gemini AI review enabled
 ---
 
 ## What it does
