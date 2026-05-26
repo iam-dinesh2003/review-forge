@@ -266,3 +266,6 @@ reviewforge/
         ├── hooks/                          ← Data fetching hooks (real API + mock fallback)
         └── api/                            ← Type-safe API client functions
 ```
+
+## AI Review Test
+Testing ReviewForge Gemini integration.
