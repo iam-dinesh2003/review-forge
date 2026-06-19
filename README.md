@@ -1,9 +1,11 @@
 # ReviewForge
 
-AI-powered GitHub PR reviewer and developer evaluation platform. Built with Java Spring Boot + Gemini 2.5 Flash.
+AI-powered GitHub PR reviewer and developer evaluation platform. Built with Java Spring Boot + Google Gemini 2.5 Flash + Python FastAPI ML microservice.
 
-> **Live demo concept:** Open a PR → watch AI comments appear inline within 30 seconds. Paste any GitHub username → get a full code quality assessment with AI-detection scoring.
+> **Live demo concept:** Open a PR → watch AI comments appear inline within 30 seconds. Paste any GitHub username → get a full code quality assessment with AI-detection scoring and ML-based JD ranking.
+
 ## Status: Live on localhost with Gemini AI review enabled
+
 ---
 
 ## What it does
@@ -19,6 +21,11 @@ AI-powered GitHub PR reviewer and developer evaluation platform. Built with Java
 2. Sends the code diffs to Gemini for skill assessment
 3. Returns a scored profile with language breakdown, detected skills, AI-written code risk, and per-PR comments
 
+**ML-Based JD Ranking (ml-scorer)** — Rank multiple candidates against a job description without LLM rate limits:
+1. POST a JD + list of candidate profiles to the Python FastAPI microservice
+2. TF-IDF vectorization + cosine similarity scores each candidate globally against the JD
+3. Returns ranked results with matched/missing skills, verdict (STRONG_FIT / MAYBE / POOR_FIT), and weighted score (skill overlap 60% + TF-IDF similarity 40%)
+
 ---
 
 ## Tech stack
@@ -27,6 +34,7 @@ AI-powered GitHub PR reviewer and developer evaluation platform. Built with Java
 |-------|-----------|
 | Backend | Java 17 + Spring Boot 3.3 |
 | AI | Google Gemini 2.5 Flash (JSON mode) |
+| ML Microservice | Python 3.11 + FastAPI + uvicorn + scikit-learn (TF-IDF, cosine similarity) + Pydantic |
 | Database | PostgreSQL (Railway / local) |
 | Cache | Redis (installation token caching, 55-min TTL) |
 | Frontend | React 18 + Vite + TypeScript + TailwindCSS + Recharts |
@@ -58,6 +66,68 @@ POST /webhook  ← GitHub sends signed webhook
             ├─ Parse response → { score, summary, comments[] }
             ├─ POST /repos/.../pulls/{pr}/reviews  (single review call)
             └─ Save ReviewSession + ReviewComment[] to PostgreSQL
+
+
+Candidate Ranking (no LLM needed):
+
+POST /score  ← Python FastAPI ml-scorer (port 8091)
+      │
+      ├─ Normalize JD text + extract required skills
+      ├─ Build candidate text corpus (bio + skills + languages, weighted)
+      ├─ TF-IDF vectorize full corpus (JD + all candidates globally)
+      ├─ Cosine similarity: each candidate vs JD vector
+      ├─ Skill overlap: extracted skills vs required skills
+      ├─ Weighted score = skill_overlap × 0.60 + tfidf_sim × 0.40
+      └─ Return ranked list with matched_skills, missing_skills, verdict
+```
+
+---
+
+## ml-scorer — Python ML Microservice
+
+Located in `ml-scorer/`. A standalone FastAPI service that replaces per-candidate Gemini calls with batch TF-IDF scoring — no rate limits, instant results for large candidate pools.
+
+```bash
+cd ml-scorer
+pip install -r requirements.txt
+python scorer.py
+# Runs on http://localhost:8091
+```
+
+**API:**
+```bash
+curl -X POST http://localhost:8091/score \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jd_text": "Python developer with scikit-learn, FastAPI, PostgreSQL experience",
+    "candidates": [
+      {
+        "username": "alice",
+        "bio": "Python backend engineer, FastAPI, scikit-learn",
+        "skills": [{"name": "python", "level": "EXPERT"}, {"name": "fastapi", "level": "PROFICIENT"}],
+        "languages": [{"name": "python", "percentage": 85}]
+      }
+    ]
+  }'
+```
+
+**Response:**
+```json
+{
+  "results": [
+    {
+      "username": "alice",
+      "score": 78.4,
+      "verdict": "STRONG_FIT",
+      "matched_skills": ["fastapi", "python"],
+      "missing_skills": ["postgresql"],
+      "tfidf_similarity": 0.6821,
+      "skill_overlap_pct": 66.7,
+      "summary": "Strong match. Has python, fastapi, most required skills."
+    }
+  ],
+  "required_skills": ["fastapi", "postgresql", "python"]
+}
 ```
 
 ---
@@ -70,6 +140,7 @@ POST /webhook  ← GitHub sends signed webhook
 - **Diff filtering** — Large PRs are trimmed to 5 Java files × 200 lines × 12,000 chars before sending to Gemini to avoid context window issues while keeping costs low.
 - **JSON mode** — Gemini's `responseMimeType: application/json` forces structured output, but markdown fences are still stripped defensively before parsing.
 - **Idempotency** — Each review is keyed on `(repoFullName, prNumber, headSha)`. Re-running the webhook for the same commit is a no-op.
+- **Polyglot microservice** — The ml-scorer Python FastAPI service runs as a sidecar alongside the Java backend. Python handles batch ML scoring (TF-IDF, scikit-learn); Java handles real-time webhook processing and Gemini integration. Each language is used where it performs best.
 
 ---
 
@@ -81,6 +152,7 @@ POST /webhook  ← GitHub sends signed webhook
 - PostgreSQL 15+
 - Redis 7+
 - Node.js 20+
+- Python 3.11+
 - ngrok (free) — GitHub needs a public URL to send webhooks
 
 ### 1. Create a GitHub App
@@ -142,9 +214,16 @@ cd backend
 JAVA_HOME=/path/to/java17 mvn spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
-Or set `JAVA_HOME` globally if Maven defaults to a newer JDK.
+### 5. Run the ml-scorer microservice
 
-### 5. Run the frontend
+```bash
+cd ml-scorer
+pip install -r requirements.txt
+python scorer.py
+# Available at http://localhost:8091
+```
+
+### 6. Run the frontend
 
 ```bash
 cd frontend
@@ -155,7 +234,7 @@ npm run dev
 
 Open `http://localhost:5173`. The dashboard will connect to the backend automatically.
 
-### 6. Test it
+### 7. Test it
 
 Open a PR in your test repo. Within 30 seconds you should see:
 - ReviewForge comments appear inline on the PR
@@ -190,6 +269,8 @@ Note: without `GITHUB_PAT`, the GitHub API rate limit is 60 req/hr (unauthentica
 | `GET /api/candidates` | List all analyzed candidates |
 | `GET /api/candidates/{id}` | Single candidate profile |
 | `GET /actuator/health` | Health check (used by Railway) |
+| `POST /score` *(ml-scorer port 8091)* | Rank candidates against a JD via TF-IDF |
+| `GET /health` *(ml-scorer port 8091)* | ML microservice health check |
 
 ---
 
@@ -212,6 +293,14 @@ Note: without `GITHUB_PAT`, the GitHub API rate limit is 60 req/hr (unauthentica
    REDIS_HOST=                 (auto-set by Railway Redis plugin)
    ```
 5. Update your GitHub App's webhook URL to the Railway URL
+
+### ml-scorer on Railway
+
+Deploy `ml-scorer/` as a separate Railway service alongside the backend:
+```
+# Railway will auto-detect Python and install requirements.txt
+# Set start command: uvicorn scorer:app --host 0.0.0.0 --port 8091
+```
 
 ### Frontend on Vercel
 
@@ -252,6 +341,9 @@ reviewforge/
 │           ├── dashboard/                   ← Dashboard API response DTOs
 │           ├── candidate/                   ← Candidate API DTOs
 │           └── webhook/                     ← GitHub webhook payload DTOs
+├── ml-scorer/                               ← Python FastAPI ML microservice
+│   ├── scorer.py                            ← TF-IDF + cosine similarity ranking engine
+│   └── requirements.txt                     ← fastapi, uvicorn, scikit-learn, pydantic
 └── frontend/
     └── src/
         ├── pages/
